@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Products Dashboard</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+body { background:#f4f6f9; padding:20px }
+.thumb { width:60px; height:60px; object-fit:cover }
+.sortable { cursor:pointer; color:#0d6efd }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h3 class="mb-3">Products Dashboard</h3>
+
+<div class="row mb-3">
+<div class="col-md-3">
+<input class="form-control" id="searchInput" placeholder="Search title...">
+</div>
+
+<div class="col-md-2">
+<select class="form-select" id="pageSizeSelect">
+<option value="5">5/page</option>
+<option value="10" selected>10/page</option>
+<option value="20">20/page</option>
+</select>
+</div>
+
+<div class="col-md-7 text-end">
+<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">Create</button>
+<button class="btn btn-success" id="exportBtn">Export CSV</button>
+</div>
+</div>
+
+<table class="table table-hover table-bordered bg-white">
+<thead class="table-dark">
+<tr>
+<th>ID</th>
+<th class="sortable" id="sortTitle">Title ⇅</th>
+<th class="sortable" id="sortPrice">Price ⇅</th>
+<th>Category</th>
+<th>Image</th>
+</tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+
+<ul class="pagination" id="pagination"></ul>
+
+</div>
+
+<!-- VIEW + EDIT MODAL -->
+<div class="modal fade" id="viewModal">
+<div class="modal-dialog">
+<div class="modal-content">
+<div class="modal-header">
+<h5>Product Detail</h5>
+<button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+<input id="editId" hidden>
+
+<label>Title</label>
+<input id="editTitle" class="form-control mb-2">
+
+<label>Price</label>
+<input id="editPrice" type="number" class="form-control mb-2">
+
+<label>Description</label>
+<textarea id="editDesc" class="form-control mb-2"></textarea>
+
+<label>Image URL</label>
+<input id="editImg" class="form-control mb-2">
+
+<label>Category</label>
+<select id="editCategory" class="form-select"></select>
+</div>
+
+<div class="modal-footer">
+<button class="btn btn-warning" id="saveEdit">Update</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- CREATE MODAL -->
+<div class="modal fade" id="createModal">
+<div class="modal-dialog">
+<div class="modal-content">
+<div class="modal-header">
+<h5>Create Product</h5>
+<button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+<input id="newTitle" class="form-control mb-2" placeholder="Title">
+<input id="newPrice" type="number" class="form-control mb-2" placeholder="Price">
+<textarea id="newDesc" class="form-control mb-2" placeholder="Description"></textarea>
+<input id="newImg" class="form-control mb-2" placeholder="Image URL">
+
+<label>Category</label>
+<select id="newCategory" class="form-select"></select>
+</div>
+
+<div class="modal-footer">
+<button class="btn btn-success" id="createBtn">Create</button>
+</div>
+</div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+let allProducts = [];
+let filteredProducts = [];
+let currentPageData = [];
+let categories = [];
+
+let currentPage = 1;
+let pageSize = 10;
+let sortField = null;
+let sortAsc = true;
+
+async function loadCategories(){
+const res = await fetch("https://api.escuelajs.co/api/v1/categories");
+categories = await res.json();
+
+const opts = categories.map(c =>
+`<option value="${c.id}">${c.name}</option>`
+).join("");
+
+newCategory.innerHTML = opts;
+editCategory.innerHTML = opts;
+}
+
+async function loadData(){
+const res = await fetch("https://api.escuelajs.co/api/v1/products");
+allProducts = await res.json();
+filteredProducts = [...allProducts];
+render();
+}
+
+function render(){
+
+let data = [...filteredProducts];
+
+if(sortField){
+data.sort((a,b)=>{
+let A = sortField=="title"?a.title.toLowerCase():a.price;
+let B = sortField=="title"?b.title.toLowerCase():b.price;
+return sortAsc ? (A>B?1:-1):(A<B?1:-1);
+});
+}
+
+const start = (currentPage-1)*pageSize;
+currentPageData = data.slice(start,start+pageSize);
+
+tbody.innerHTML = currentPageData.map(p=>{
+const desc = (p.description||"").replace(/"/g,"'");
+return `
+<tr data-bs-toggle="tooltip" title="${desc}" onclick="openDetail(${p.id})">
+<td>${p.id}</td>
+<td>${p.title}</td>
+<td>$${p.price}</td>
+<td>${p.category?.name||""}</td>
+<td><img src="${p.images?.[0]||''}" class="thumb"></td>
+</tr>`;
+}).join("");
+
+new bootstrap.Tooltip(document.body,{selector:'[data-bs-toggle="tooltip"]'});
+renderPagination(data.length);
+}
+
+function renderPagination(total){
+const pages = Math.ceil(total/pageSize);
+pagination.innerHTML="";
+for(let i=1;i<=pages;i++){
+pagination.innerHTML +=
+`<li class="page-item ${i==currentPage?'active':''}">
+<a class="page-link" onclick="currentPage=${i};render()">${i}</a></li>`;
+}
+}
+
+searchInput.oninput = ()=>{
+const k = searchInput.value.toLowerCase();
+filteredProducts = allProducts.filter(p =>
+p.title.toLowerCase().includes(k));
+currentPage=1;
+render();
+};
+
+pageSizeSelect.onchange = ()=>{
+pageSize = +pageSizeSelect.value;
+currentPage=1;
+render();
+};
+
+sortTitle.onclick = ()=>toggleSort("title");
+sortPrice.onclick = ()=>toggleSort("price");
+
+function toggleSort(f){
+sortAsc = sortField===f?!sortAsc:true;
+sortField=f;
+render();
+}
+
+exportBtn.onclick = ()=>{
+let csv="ID,Title,Price,Category,Image\n";
+currentPageData.forEach(p=>{
+csv += `${p.id},"${p.title}",${p.price},"${p.category?.name||""}",${p.images?.[0]||""}\n`;
+});
+const blob=new Blob([csv]);
+const a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="products_view.csv";
+a.click();
+};
+
+function openDetail(id){
+const p = allProducts.find(x=>x.id==id);
+editId.value=p.id;
+editTitle.value=p.title;
+editPrice.value=p.price;
+editDesc.value=p.description;
+editImg.value=p.images?.[0]||"";
+editCategory.value=p.category?.id;
+new bootstrap.Modal(viewModal).show();
+}
+
+saveEdit.onclick = async ()=>{
+await fetch(`https://api.escuelajs.co/api/v1/products/${editId.value}`,{
+method:"PUT",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+title:editTitle.value,
+price:+editPrice.value,
+description:editDesc.value,
+images:[editImg.value],
+categoryId:+editCategory.value
+})
+});
+loadData();
+};
+
+createBtn.onclick = async ()=>{
+await fetch("https://api.escuelajs.co/api/v1/products",{
+method:"POST",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+title:newTitle.value,
+price:+newPrice.value,
+description:newDesc.value,
+images:[newImg.value],
+categoryId:+newCategory.value
+})
+});
+loadData();
+};
+
+loadCategories();
+loadData();
+</script>
+
+</body>
+</html>
